@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Productivity | Photos With Max B</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+  margin:0;
+  font-family: Inter, sans-serif;
+  background:#f4f6f8;
+}
+.app {
+  max-width:1200px;
+  margin:auto;
+  padding:20px;
+}
+h1 { text-align:center; }
+
+button {
+  padding:8px 14px;
+  border:none;
+  border-radius:6px;
+  background:#111;
+  color:white;
+  cursor:pointer;
+}
+
+input {
+  padding:6px;
+  border-radius:6px;
+  border:1px solid #ccc;
+}
+
+.week-tabs button.active {
+  background:#4CAF50;
+}
+
+.grid {
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  gap:10px;
+  margin-top:20px;
+}
+
+.day {
+  background:white;
+  border-radius:12px;
+  padding:10px;
+  box-shadow:0 2px 6px rgba(0,0,0,.1);
+}
+
+.circle {
+  width:80px;
+  height:80px;
+  border-radius:50%;
+  margin:10px auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:bold;
+  background:conic-gradient(#ddd 0deg, #eee 0deg);
+}
+
+.task {
+  display:flex;
+  gap:6px;
+  font-size:14px;
+}
+
+.habits table {
+  width:100%;
+  border-collapse:collapse;
+}
+.habits td, .habits th {
+  border:1px solid #ddd;
+  padding:6px;
+  text-align:center;
+}
+</style>
+</head>
+
+<body>
+<div class="app">
+
+<h1>Focusifyr</h1>
+
+<div id="auth">
+  <input id="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+  <button onclick="register()">Register</button>
+</div>
+
+<div id="main" style="display:none">
+
+<div class="week-tabs" id="weeks"></div>
+
+<canvas id="chart" height="120"></canvas>
+
+<div class="grid" id="days"></div>
+
+<h3>Daily Habits</h3>
+<div class="habits">
+<table id="habits"></table>
+</div>
+
+</div>
+</div>
+
+<script>
+// 🔥 FIREBASE CONFIG
+const firebaseConfig = {
+  apiKey: "AIzaSyByNjT5Uoe-eOAxyMCxNw10I3vyK2lgGkI",
+  authDomain: "productivity-493dd.firebaseapp.com",
+  projectId: "productivity-493dd",
+  storageBucket: "productivity-493dd.firebasestorage.app",
+  messagingSenderId: "570358408560",
+  appId: "1:570358408560:web:73a73ee1ac9ce87f16dbb5",
+  measurementId: "G-PRQY1YW3HS"
+};
+firebase.initializeApp(firebaseConfig);
+
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let user, currentWeek = 1;
+const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+auth.onAuthStateChanged(u=>{
+  if(u){
+    user = u;
+    document.getElementById("auth").style.display="none";
+    document.getElementById("main").style.display="block";
+    loadWeek(1);
+    renderWeekTabs();
+  }
+});
+
+function login(){
+  auth.signInWithEmailAndPassword(
+    email.value, password.value
+  );
+}
+
+function register(){
+  auth.createUserWithEmailAndPassword(
+    email.value, password.value
+  );
+}
+
+// ---------- WEEK SYSTEM ----------
+function renderWeekTabs(){
+  const w = document.getElementById("weeks");
+  w.innerHTML="";
+  for(let i=1;i<=4;i++){
+    const b=document.createElement("button");
+    b.textContent="Week "+i;
+    if(i===currentWeek) b.classList.add("active");
+    b.onclick=()=>{currentWeek=i; loadWeek(i);}
+    w.appendChild(b);
+  }
+}
+
+async function loadWeek(week){
+  renderWeekTabs();
+  const ref = db.collection("users")
+    .doc(user.uid)
+    .collection("weeks")
+    .doc("week"+week);
+
+  let snap = await ref.get();
+  let data = snap.exists ? snap.data() : createEmptyWeek();
+
+  renderDays(data);
+  renderHabits(data);
+  renderChart(data);
+}
+
+// ---------- DATA ----------
+function createEmptyWeek(){
+  return {
+    days: Array(7).fill().map(()=>({
+      tasks:[false,false,false],
+      percent:0
+    })),
+    habits: Array(5).fill(Array(7).fill(false))
+  };
+}
+
+// ---------- UI ----------
+function renderDays(data){
+  const d = document.getElementById("days");
+  d.innerHTML="";
+  data.days.forEach((day,i)=>{
+    const div=document.createElement("div");
+    div.className="day";
+
+    let done = day.tasks.filter(t=>t).length;
+    let pct = Math.round((done/day.tasks.length)*100);
+
+    div.innerHTML=`
+      <b>${days[i]}</b>
+      <div class="circle" style="background:conic-gradient(#4caf50 ${pct*3.6}deg,#eee 0deg)">
+        ${pct}%
+      </div>
+      ${day.tasks.map((t,j)=>`
+        <div class="task">
+          <input type="checkbox" ${t?"checked":""}
+          onchange="toggleTask(${i},${j})">
+          Task ${j+1}
+        </div>
+      `).join("")}
+    `;
+    d.appendChild(div);
+  });
+}
+
+function renderHabits(data){
+  const table=document.getElementById("habits");
+  table.innerHTML="<tr><th>Habit</th>"+days.map(d=>`<th>${d}</th>`).join("")+"</tr>";
+  data.habits.forEach((row,i)=>{
+    let tr="<tr><td>Habit "+(i+1)+"</td>";
+    row.forEach((v,j)=>{
+      tr+=`<td><input type="checkbox" ${v?"checked":""}
+      onchange="toggleHabit(${i},${j})"></td>`;
+    });
+    tr+="</tr>";
+    table.innerHTML+=tr;
+  });
+}
+
+function renderChart(data){
+  const ctx=document.getElementById("chart");
+  const values=data.days.map(d=>Math.round((d.tasks.filter(x=>x).length/3)*100));
+
+  new Chart(ctx,{
+    type:'line',
+    data:{
+      labels:days,
+      datasets:[{
+        label:'Daily Progress %',
+        data:values,
+        borderColor:'#4caf50',
+        fill:false
+      }]
+    },
+    options:{responsive:true}
+  });
+}
+
+// ---------- SAVE ----------
+async function save(data){
+  await db.collection("users")
+    .doc(user.uid)
+    .collection("weeks")
+    .doc("week"+currentWeek)
+    .set(data);
+}
+
+async function toggleTask(day,task){
+  const ref=db.collection("users").doc(user.uid).collection("weeks").doc("week"+currentWeek);
+  const snap=await ref.get();
+  const data=snap.data();
+  data.days[day].tasks[task]=!data.days[day].tasks[task];
+  await save(data);
+  loadWeek(currentWeek);
+}
+
+async function toggleHabit(h,d){
+  const ref=db.collection("users").doc(user.uid).collection("weeks").doc("week"+currentWeek);
+  const snap=await ref.get();
+  const data=snap.data();
+  data.habits[h][d]=!data.habits[h][d];
+  await save(data);
+  loadWeek(currentWeek);
+}
+</script>
+</body>
+</html>
