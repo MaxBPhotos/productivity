@@ -5,145 +5,43 @@
 <title>Productivity | Photos With Max B</title>
 
 <!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js"></script>
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, GoogleAuthProvider, onAuthStateChanged, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, collection } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-<!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<style>
-body {
-  margin:0;
-  font-family: Inter, sans-serif;
-  background:#f4f6f8;
-}
-.app {
-  max-width:1200px;
-  margin:auto;
-  padding:20px;
-}
-h1 { text-align:center; }
-
-button {
-  padding:8px 14px;
-  border:none;
-  border-radius:6px;
-  background:#111;
-  color:white;
-  cursor:pointer;
-}
-
-input {
-  padding:6px;
-  border-radius:6px;
-  border:1px solid #ccc;
-}
-
-.week-tabs button.active {
-  background:#4CAF50;
-}
-
-.grid {
-  display:grid;
-  grid-template-columns:repeat(7,1fr);
-  gap:10px;
-  margin-top:20px;
-}
-
-.day {
-  background:white;
-  border-radius:12px;
-  padding:10px;
-  box-shadow:0 2px 6px rgba(0,0,0,.1);
-}
-
-.circle {
-  width:80px;
-  height:80px;
-  border-radius:50%;
-  margin:10px auto;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  font-weight:bold;
-  background:conic-gradient(#ddd 0deg, #eee 0deg);
-}
-
-.task {
-  display:flex;
-  gap:6px;
-  font-size:14px;
-}
-
-.habits table {
-  width:100%;
-  border-collapse:collapse;
-}
-.habits td, .habits th {
-  border:1px solid #ddd;
-  padding:6px;
-  text-align:center;
-}
-</style>
-</head>
-
-<body>
-<div class="app">
-
-<h1>Focusifyr</h1>
-
-<div id="auth">
-<button onclick="googleLogin()" style="
-  padding:12px 20px;
-  border-radius:8px;
-  background:#4285F4;
-  color:white;
-  border:none;
-  font-size:16px;
-  cursor:pointer;">
-  Sign in with Google
-</button>
-</div>
-
-<div id="main" style="display:none">
-
-<div class="week-tabs" id="weeks"></div>
-
-<canvas id="chart" height="120"></canvas>
-
-<div class="grid" id="days"></div>
-
-<h3>Daily Habits</h3>
-<div class="habits">
-<table id="habits"></table>
-</div>
-
-</div>
-</div>
-
-<script>
-// 🔥 FIREBASE CONFIG
-const firebaseConfig = {
+window.firebaseConfig = {
   apiKey: "AIzaSyByNjT5Uoe-eOAxyMCxNw10I3vyK2lgGkI",
   authDomain: "productivity-493dd.firebaseapp.com",
   projectId: "productivity-493dd",
-  storageBucket: "productivity-493dd.firebasestorage.app",
+  storageBucket: "productivity-493dd.appspot.com",
   messagingSenderId: "570358408560",
   appId: "1:570358408560:web:73a73ee1ac9ce87f16dbb5",
   measurementId: "G-PRQY1YW3HS"
 };
-firebase.initializeApp(firebaseConfig);
 
-const auth = firebase.auth();
-const db = firebase.firestore();
+const app = initializeApp(window.firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
 
-let user, currentWeek = 1;
+window.user = null;
+window.currentWeek = 1;
+window.chartInstance = null;
 const days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 
-auth.onAuthStateChanged(u=>{
+window.googleLogin = async () => {
+  try {
+    const result = await signInWithPopup(auth, provider);
+    console.log("Logged in:", result.user.email);
+  } catch(e) {
+    alert(e.message);
+  }
+};
+
+onAuthStateChanged(auth, u => {
   if(u){
-    user = u;
+    window.user = u;
     document.getElementById("auth").style.display="none";
     document.getElementById("main").style.display="block";
     loadWeek(1);
@@ -151,55 +49,34 @@ auth.onAuthStateChanged(u=>{
   }
 });
 
-const provider = new firebase.auth.GoogleAuthProvider();
-
-function googleLogin() {
-  auth.signInWithPopup(provider)
-    .then(result => {
-      console.log("Logged in:", result.user.email);
-    })
-    .catch(err => {
-      alert(err.message);
-    });
-}
-
-
 // ---------- WEEK SYSTEM ----------
-function renderWeekTabs(){
+window.renderWeekTabs = () => {
   const w = document.getElementById("weeks");
   w.innerHTML="";
   for(let i=1;i<=4;i++){
     const b=document.createElement("button");
     b.textContent="Week "+i;
-    if(i===currentWeek) b.classList.add("active");
-    b.onclick=()=>{currentWeek=i; loadWeek(i);}
+    if(i===window.currentWeek) b.classList.add("active");
+    b.onclick=()=>{window.currentWeek=i; loadWeek(i);}
     w.appendChild(b);
   }
-}
+};
 
-async function loadWeek(week){
+window.loadWeek = async (week) => {
   renderWeekTabs();
-  const ref = db.collection("users")
-    .doc(user.uid)
-    .collection("weeks")
-    .doc("week"+week);
-
-  let snap = await ref.get();
-  let data = snap.exists ? snap.data() : createEmptyWeek();
-
+  const ref = doc(db, "users", window.user.uid, "weeks", "week"+week);
+  const snap = await getDoc(ref);
+  let data = snap.exists() ? snap.data() : createEmptyWeek();
   renderDays(data);
   renderHabits(data);
   renderChart(data);
-}
+};
 
 // ---------- DATA ----------
 function createEmptyWeek(){
   return {
-    days: Array(7).fill().map(()=>({
-      tasks:[false,false,false],
-      percent:0
-    })),
-    habits: Array(5).fill(Array(7).fill(false))
+    days: Array.from({length:7}, ()=>({tasks:[false,false,false], percent:0})),
+    habits: Array.from({length:5}, ()=>Array.from({length:7}, ()=>false))
   };
 }
 
@@ -221,13 +98,21 @@ function renderDays(data){
       </div>
       ${day.tasks.map((t,j)=>`
         <div class="task">
-          <input type="checkbox" ${t?"checked":""}
-          onchange="toggleTask(${i},${j})">
+          <input type="checkbox" ${t?"checked":""} data-day="${i}" data-task="${j}">
           Task ${j+1}
         </div>
       `).join("")}
     `;
     d.appendChild(div);
+  });
+
+  // attach events
+  document.querySelectorAll('.task input').forEach(el=>{
+    el.onchange = async (e)=>{
+      const day = parseInt(e.target.dataset.day);
+      const task = parseInt(e.target.dataset.task);
+      await toggleTask(day,task);
+    }
   });
 }
 
@@ -237,19 +122,26 @@ function renderHabits(data){
   data.habits.forEach((row,i)=>{
     let tr="<tr><td>Habit "+(i+1)+"</td>";
     row.forEach((v,j)=>{
-      tr+=`<td><input type="checkbox" ${v?"checked":""}
-      onchange="toggleHabit(${i},${j})"></td>`;
+      tr+=`<td><input type="checkbox" data-habit="${i}" data-day="${j}" ${v?"checked":""}></td>`;
     });
     tr+="</tr>";
     table.innerHTML+=tr;
+  });
+
+  document.querySelectorAll('#habits input').forEach(el=>{
+    el.onchange = async (e)=>{
+      const h = parseInt(e.target.dataset.habit);
+      const d = parseInt(e.target.dataset.day);
+      await toggleHabit(h,d);
+    }
   });
 }
 
 function renderChart(data){
   const ctx=document.getElementById("chart");
   const values=data.days.map(d=>Math.round((d.tasks.filter(x=>x).length/3)*100));
-
-  new Chart(ctx,{
+  if(window.chartInstance) window.chartInstance.destroy();
+  window.chartInstance = new Chart(ctx,{
     type:'line',
     data:{
       labels:days,
@@ -266,30 +158,63 @@ function renderChart(data){
 
 // ---------- SAVE ----------
 async function save(data){
-  await db.collection("users")
-    .doc(user.uid)
-    .collection("weeks")
-    .doc("week"+currentWeek)
-    .set(data);
+  await setDoc(doc(db, "users", window.user.uid, "weeks", "week"+window.currentWeek), data);
 }
 
 async function toggleTask(day,task){
-  const ref=db.collection("users").doc(user.uid).collection("weeks").doc("week"+currentWeek);
-  const snap=await ref.get();
-  const data=snap.data();
-  data.days[day].tasks[task]=!data.days[day].tasks[task];
+  const ref = doc(db, "users", window.user.uid, "weeks", "week"+window.currentWeek);
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? snap.data() : createEmptyWeek();
+  data.days[day].tasks[task] = !data.days[day].tasks[task];
   await save(data);
-  loadWeek(currentWeek);
+  loadWeek(window.currentWeek);
 }
 
 async function toggleHabit(h,d){
-  const ref=db.collection("users").doc(user.uid).collection("weeks").doc("week"+currentWeek);
-  const snap=await ref.get();
-  const data=snap.data();
-  data.habits[h][d]=!data.habits[h][d];
+  const ref = doc(db, "users", window.user.uid, "weeks", "week"+window.currentWeek);
+  const snap = await getDoc(ref);
+  const data = snap.exists() ? snap.data() : createEmptyWeek();
+  data.habits[h][d] = !data.habits[h][d];
   await save(data);
-  loadWeek(currentWeek);
+  loadWeek(window.currentWeek);
 }
 </script>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body { margin:0; font-family: Inter, sans-serif; background:#f4f6f8; }
+.app { max-width:1200px; margin:auto; padding:20px; }
+h1 { text-align:center; }
+button { padding:8px 14px; border:none; border-radius:6px; background:#111; color:white; cursor:pointer; }
+input { padding:6px; border-radius:6px; border:1px solid #ccc; }
+.week-tabs button.active { background:#4CAF50; }
+.grid { display:grid; grid-template-columns:repeat(7,1fr); gap:10px; margin-top:20px; }
+.day { background:white; border-radius:12px; padding:10px; box-shadow:0 2px 6px rgba(0,0,0,.1); }
+.circle { width:80px; height:80px; border-radius:50%; margin:10px auto; display:flex; align-items:center; justify-content:center; font-weight:bold; background:conic-gradient(#ddd 0deg, #eee 0deg); }
+.task { display:flex; gap:6px; font-size:14px; }
+.habits table { width:100%; border-collapse:collapse; }
+.habits td, .habits th { border:1px solid #ddd; padding:6px; text-align:center; }
+</style>
+
+</head>
+<body>
+<div class="app">
+<h1>Focusifyr</h1>
+<div id="auth">
+<button onclick="googleLogin()" style="padding:12px 20px; border-radius:8px; background:#4285F4; color:white; border:none; font-size:16px; cursor:pointer;">Sign in with Google</button>
+</div>
+
+<div id="main" style="display:none">
+<div class="week-tabs" id="weeks"></div>
+<canvas id="chart" height="120"></canvas>
+<div class="grid" id="days"></div>
+<h3>Daily Habits</h3>
+<div class="habits">
+<table id="habits"></table>
+</div>
+</div>
+</div>
 </body>
 </html>
