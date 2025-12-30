@@ -145,17 +145,18 @@ auth.onAuthStateChanged(u=>{
   }
 });
 
-function login(){
-  auth.signInWithEmailAndPassword(
-    email.value, password.value
-  );
+const provider = new firebase.auth.GoogleAuthProvider();
+
+function googleLogin() {
+  auth.signInWithPopup(provider)
+    .then(result => {
+      console.log("Logged in:", result.user.email);
+    })
+    .catch(err => {
+      alert(err.message);
+    });
 }
 
-function register(){
-  auth.createUserWithEmailAndPassword(
-    email.value, password.value
-  );
-}
 
 // ---------- WEEK SYSTEM ----------
 function renderWeekTabs(){
